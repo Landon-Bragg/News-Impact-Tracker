@@ -1,12 +1,4 @@
 
-import os, json
-import streamlit as st
-import pandas as pd
-
-st.set_page_config(page_title="News Impact Tracker", layout="wide")
-st.title("News Impact Tracker (Demo)")
-
-st.write("This is a placeholder dashboard. For a real-time view, connect to Postgres or read the `impact_scores` topic.")
 
 import os
 import json

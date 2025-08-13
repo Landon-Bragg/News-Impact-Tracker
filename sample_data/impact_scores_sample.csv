@@ -1,0 +1,5 @@
+symbol,window_sec,sentiment,pct_change,impact_score,headline_id,headline,event_time
+AAPL,600,0.76,2.0,1.52,1,"AAPL surges after earnings beat; MSFT holds steady",2025-08-13T12:05:00Z
+MSFT,600,0.10,-0.5,-0.05,1,"AAPL surges after earnings beat; MSFT holds steady",2025-08-13T12:05:00Z
+GOOGL,600,0.40,1.1,0.44,2,"GOOGL announces new AI initiative",2025-08-13T12:06:00Z
+TSLA,600,-0.60,-1.9,1.14,3,"TSLA shares drop on delivery numbers",2025-08-13T12:07:00Z

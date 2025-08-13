@@ -8,6 +8,25 @@ import feedparser
 
 load_dotenv()
 
+# --- add near the top, after imports ---
+COMPANY_MAP = {
+    "apple": "AAPL",
+    "microsoft": "MSFT",
+    "google": "GOOGL", "alphabet": "GOOGL",
+    "amazon": "AMZN",
+    "tesla": "TSLA",
+    "nvidia": "NVDA",
+    "meta": "META", "facebook": "META",
+}
+
+def add_name_matches(text: str, tickers: set):
+    t = (text or "").lower()
+    for name, sym in COMPANY_MAP.items():
+        if name in t:
+            tickers.add(sym)
+    return tickers
+
+
 BROKER = os.getenv("KAFKA_BROKER", "localhost:9092")
 TOPIC = os.getenv("KAFKA_TOPIC_NEWS", "news_headlines")
 SYMBOLS = set([s.strip().upper() for s in os.getenv("SYMBOLS","AAPL,MSFT,GOOGL").split(",") if s.strip()])
@@ -17,8 +36,9 @@ TICKER_RX = re.compile(r'(?:^|[^A-Z$])\$?([A-Z]{1,5})(?=$|[^A-Z])')
 
 def extract_tickers(text: str):
     cands = set(m.group(1) for m in TICKER_RX.finditer(text or ""))
-    # Filter to known universe if provided
+    cands = add_name_matches(text, cands)
     return sorted(list(cands & SYMBOLS)) if SYMBOLS else sorted(list(cands))
+
 
 def load_feeds():
     cfg_path = os.path.join(os.path.dirname(__file__), "rss_feeds.yml")

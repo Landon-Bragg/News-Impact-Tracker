@@ -1,15 +1,27 @@
+# spark_jobs/impact_scoring/main.py
 
-import os, json, sys, re
+import os
+from pathlib import Path
 from datetime import datetime
-from pyspark.sql import SparkSession
-from pyspark.sql.types import *
-from pyspark.sql.functions import *
-from pyspark.sql.functions import from_json, col
-from dotenv import load_dotenv
 
-# Lazy VADER init inside UDF
+from dotenv import load_dotenv
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.functions import (
+    col, from_json, to_timestamp, expr, explode_outer, first, last,
+    when, lit, date_format, window
+)
+from pyspark.sql.types import (
+    StructType, StructField, StringType, ArrayType, DoubleType
+)
+from pyspark.sql.functions import udf
+from pyspark.sql.types import DoubleType
+
+# --------------------------
+# Lazy VADER sentiment UDF
+# --------------------------
 _vader = None
-def sentiment_score(text: str) -> float:
+def _sentiment_score(text: str) -> float:
     global _vader
     if _vader is None:
         import nltk
@@ -23,122 +35,213 @@ def sentiment_score(text: str) -> float:
         return 0.0
     return float(_vader.polarity_scores(text)['compound'])
 
-def main():
-    load_dotenv()
-    broker = os.getenv("KAFKA_BROKER", "localhost:9092")
-    topic_news = os.getenv("KAFKA_TOPIC_NEWS", "news_headlines")
-    topic_prices = os.getenv("KAFKA_TOPIC_PRICES", "price_ticks")
-    topic_out = os.getenv("KAFKA_TOPIC_IMPACT", "impact_scores")
-    symbols_env = os.getenv("SYMBOLS", "")
-    universe = set(s.strip().upper() for s in symbols_env.split(",") if s.strip())
+sent_udf = udf(_sentiment_score, DoubleType())
 
-    spark = (SparkSession.builder
-             .appName("impact-scoring")
-             .getOrCreate())
+
+def main():
+    # --------------------------
+    # Env + Windows Hadoop setup
+    # --------------------------
+    load_dotenv()
+
+    # Kafka topics / symbols
+    broker       = os.getenv("KAFKA_BROKER", "localhost:9092")
+    topic_news   = os.getenv("KAFKA_TOPIC_NEWS",   "news_headlines")
+    topic_prices = os.getenv("KAFKA_TOPIC_PRICES", "price_ticks")
+    topic_out    = os.getenv("KAFKA_TOPIC_IMPACT", "impact_scores")
+
+    symbols_env = os.getenv("SYMBOLS", "")
+    universe = {s.strip().upper() for s in symbols_env.split(",") if s.strip()}
+
+    # Windows + Hadoop specifics (prevents NativeIO/perm issues)
+    os.environ["HADOOP_HOME"]     = r"C:\hadoop"
+    os.environ["hadoop.home.dir"] = r"C:\hadoop"
+    os.environ["PATH"]            = r"C:\hadoop\bin;" + os.environ.get("PATH", "")
+    os.environ["JAVA_TOOL_OPTIONS"] = "-Djava.io.tmpdir=C:\\spark-tmp"
+
+    # Use Windows-safe absolute paths and file:// URIs
+    local_tmp      = r"C:\spark-tmp"
+    warehouse_uri  = r"file:///C:/spark-warehouse"
+    checkpoint_uri = r"file:///C:/spark-checkpoints/impact_scores"
+
+    # --------------------------
+    # Spark session
+    # --------------------------
+    spark = (
+        SparkSession.builder
+        .appName("impact-scoring")
+        .config("spark.master", "local[*]")
+        .config("spark.local.dir", local_tmp)
+        .config("spark.sql.warehouse.dir", warehouse_uri)
+        .config("spark.hadoop.tmp.dir", "file:///C:/spark-tmp")
+        .config(
+            "spark.driver.extraJavaOptions",
+            "-Djava.library.path=C:\\hadoop\\bin -Dhadoop.home.dir=C:\\hadoop -Djava.io.tmpdir=C:\\spark-tmp"
+        )
+        .config(
+            "spark.executor.extraJavaOptions",
+            "-Djava.library.path=C:\\hadoop\\bin -Dhadoop.home.dir=C:\\hadoop -Djava.io.tmpdir=C:\\spark-tmp"
+        )
+        .getOrCreate()
+    )
     spark.sparkContext.setLogLevel("WARN")
 
-    # Define schemas
+    # --------------------------
+    # Schemas
+    # --------------------------
     news_schema = StructType([
-        StructField("id", StringType()),
-        StructField("timestamp", StringType()),
-        StructField("source", StringType()),
+        StructField("id",       StringType()),
+        StructField("timestamp",StringType()),
+        StructField("source",   StringType()),
         StructField("headline", StringType()),
-        StructField("tickers", ArrayType(StringType()))
+        StructField("tickers",  ArrayType(StringType()))
     ])
 
     price_schema = StructType([
-        StructField("symbol", StringType()),
-        StructField("timestamp", StringType()),
-        StructField("price", DoubleType())
+        StructField("symbol",   StringType()),
+        StructField("timestamp",StringType()),
+        StructField("price",    DoubleType())
     ])
 
-    # Read Kafka streams
-    news_raw = (spark.readStream
-        .format("kafka")
+    # --------------------------
+    # Kafka sources (streams)
+    # --------------------------
+    news_raw = (
+        spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", broker)
         .option("subscribe", topic_news)
         .option("startingOffsets", "latest")
-        .load())
+        .load()
+    )
 
-    prices_raw = (spark.readStream
-        .format("kafka")
+    prices_raw = (
+        spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", broker)
         .option("subscribe", topic_prices)
         .option("startingOffsets", "latest")
-        .load())
+        .load()
+    )
 
-    news = (news_raw.selectExpr("CAST(value AS STRING) as json")
-            .select(from_json(col("json"), news_schema).alias("d"))
-            .select("d.*")
-            .withColumn("event_time", to_timestamp("timestamp"))
-            .withWatermark("event_time", "10 minutes")
-            )
+    # --------------------------
+    # Parse + watermark
+    # --------------------------
+    news = (
+        news_raw.selectExpr("CAST(value AS STRING) AS json")
+        .select(from_json(col("json"), news_schema).alias("d"))
+        .select("d.*")
+        .withColumn("event_time", to_timestamp("timestamp"))
+        .withWatermark("event_time", "10 minutes")
+    )
 
-    # explode tickers so we can join per-symbol
+    # optional: filter to universe if provided, then explode symbols
     if universe:
-        news = news.withColumn("tickers", expr(f"filter(tickers, x -> x in ({','.join([f'\"{s}\"' for s in universe])}))"))
-    news_exp = (news
-                .withColumn("symbol", explode_outer("tickers"))
-                .dropna(subset=["symbol"]))
+        syms = ", ".join([f"'{s}'" for s in sorted(universe)])
+        news = news.withColumn("tickers", expr(f"filter(tickers, x -> x in ({syms}))"))
 
-    # Sentiment UDF
-    sent_udf = udf(sentiment_score, DoubleType())
+    news_exp = (
+        news.withColumn("symbol", explode_outer("tickers"))
+            .dropna(subset=["symbol"])
+    )
+
+    # Sentiment
     news_sent = news_exp.withColumn("sentiment", sent_udf(col("headline")))
 
-    prices = (prices_raw.selectExpr("CAST(value AS STRING) as json")
-              .select(from_json(col("json"), price_schema).alias("d"))
-              .select("d.*")
-              .withColumn("event_time", to_timestamp("timestamp"))
-              .withWatermark("event_time", "10 minutes")
-              )
+    # Prices with watermark
+    prices = (
+        prices_raw.selectExpr("CAST(value AS STRING) AS json")
+        .select(from_json(col("json"), price_schema).alias("d"))
+        .select("d.*")
+        .withColumn("event_time", to_timestamp("timestamp"))
+        .withWatermark("event_time", "10 minutes")
+    )
 
-    # Compute pct change over a 10-minute window per symbol using last and first
-    price_window = (prices
-        .withColumn("price_ts", col("event_time"))
+    # --------------------------
+    # Price window agg (10m window, 1m slide)
+    # --------------------------
+    price_window = (
+        prices
         .groupBy(window(col("event_time"), "10 minutes", "1 minute"), col("symbol"))
         .agg(
-            first("price").alias("price_first"),
-            last("price").alias("price_last"),
+            first("price", ignorenulls=True).alias("price_first"),
+            last("price",  ignorenulls=True).alias("price_last"),
         )
-        .withColumn("pct_change", when(col("price_first") > 0, (col("price_last")/col("price_first") - 1.0) * 100.0).otherwise(lit(0.0)))
+        .withColumn(
+            "pct_change",
+            when(col("price_first") > 0,
+                 (col("price_last")/col("price_first") - 1.0) * 100.0
+            ).otherwise(lit(0.0))
+        )
     )
 
-    # Join news with nearest price window by symbol and time overlap
-    joined = (news_sent
-        .join(price_window, on=[col("symbol") == col("symbol")], how="left")
-        .withColumn("impact_score", col("sentiment") * col("pct_change"))
+    # --------------------------
+    # Window the news the same way to satisfy stream-stream join
+    # --------------------------
+    news_win = news_sent.withColumn("window", window(col("event_time"), "10 minutes", "1 minute"))
+
+    # --------------------------
+    # Join on (symbol, window)
+    # --------------------------
+    joined = (
+        news_win.alias("n")
+        .join(
+            price_window.alias("p"),
+            on=[col("n.symbol") == col("p.symbol"),
+                col("n.window") == col("p.window")],
+            how="left"
+        )
+        .withColumn("impact_score", col("n.sentiment") * col("p.pct_change"))
         .select(
-            col("symbol"),
+            col("n.symbol").alias("symbol"),
             lit(600).alias("window_sec"),
-            col("sentiment"),
-            col("pct_change"),
+            col("n.sentiment").alias("sentiment"),
+            col("p.pct_change").alias("pct_change"),
             col("impact_score"),
-            col("id").alias("headline_id"),
-            col("headline"),
-            date_format(col("event_time"), "yyyy-MM-dd'T'HH:mm:ssX").alias("event_time")
+            col("n.id").alias("headline_id"),
+            col("n.headline").alias("headline"),
+            date_format(col("n.event_time"), "yyyy-MM-dd'T'HH:mm:ssX").alias("event_time"),
         )
     )
 
-    # Write to console for dev
-    console_q = (joined.writeStream
+    # --------------------------
+    # Console sink (for dev)
+    # --------------------------
+    console_q = (
+        joined.writeStream
         .outputMode("append")
         .format("console")
         .option("truncate", False)
-        .start())
+        .start()
+    )
 
-    # Also write back to Kafka as JSON
-    out_df = joined.selectExpr("to_json(named_struct('symbol', symbol, 'window_sec', window_sec, 'sentiment', sentiment, 'pct_change', pct_change, 'impact_score', impact_score, 'headline_id', headline_id, 'headline', headline, 'event_time', event_time)) AS value")
+    # --------------------------
+    # Kafka sink (JSON) with Windows-safe checkpoint
+    # --------------------------
+    out_df = joined.selectExpr(
+        "to_json(named_struct("
+        "'symbol', symbol, "
+        "'window_sec', window_sec, "
+        "'sentiment', sentiment, "
+        "'pct_change', pct_change, "
+        "'impact_score', impact_score, "
+        "'headline_id', headline_id, "
+        "'headline', headline, "
+        "'event_time', event_time"
+        ")) AS value"
+    )
 
-    kafka_q = (out_df.writeStream
+    kafka_q = (
+        out_df.writeStream
         .format("kafka")
         .option("kafka.bootstrap.servers", broker)
         .option("topic", topic_out)
-        .option("checkpointLocation", "/tmp/impact_scores_ckpt")
+        .option("checkpointLocation", checkpoint_uri)  # file:///C:/...
         .outputMode("append")
-        .start())
+        .start()
+    )
 
     console_q.awaitTermination()
     kafka_q.awaitTermination()
+
 
 if __name__ == "__main__":
     main()

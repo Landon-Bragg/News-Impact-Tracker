@@ -7,7 +7,7 @@ joins with near-term price reactions, and computes a **News Impact Score** per t
 
 ---
 
-## 🚀 Quickstart (Windows + Python 3.11)
+## Quickstart (Windows + Python 3.11)
 
 1) **Install prerequisites**
 - Docker Desktop (WSL2 backend recommended)
