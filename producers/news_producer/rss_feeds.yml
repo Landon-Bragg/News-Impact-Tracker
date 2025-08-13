@@ -1,0 +1,8 @@
+# Simple RSS list (no API keys needed)
+feeds:
+  - name: Yahoo Finance
+    url: https://finance.yahoo.com/news/rssindex
+  - name: MarketWatch
+    url: https://feeds.a.dj.com/rss/RSSMarketsMain.xml
+  - name: Nasdaq
+    url: https://www.nasdaq.com/feed/rssoutbound?category=Stocks

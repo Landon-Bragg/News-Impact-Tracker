@@ -1,0 +1,20 @@
+# Core
+pyspark==3.5.1
+kafka-python==2.0.2
+python-dotenv==1.0.1
+
+# News parsing & NLP
+feedparser==6.0.11
+beautifulsoup4==4.12.3
+nltk==3.9.1
+regex==2024.7.24
+
+# Optional: price polling
+yfinance==0.2.52
+
+# Dashboard (optional)
+streamlit==1.36.0
+plotly==5.22.0
+pandas==2.2.2
+numpy==1.26.4
+pyyaml==6.0.2

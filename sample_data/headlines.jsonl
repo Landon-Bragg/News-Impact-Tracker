@@ -1,0 +1,3 @@
+{"id": "1", "timestamp": "2025-08-13T12:00:00Z", "source": "Sample", "headline": "AAPL surges after earnings beat; MSFT holds steady", "tickers": ["AAPL", "MSFT"]}
+{"id": "2", "timestamp": "2025-08-13T12:01:00Z", "source": "Sample", "headline": "GOOGL announces new AI initiative", "tickers": ["GOOGL"]}
+{"id": "3", "timestamp": "2025-08-13T12:02:00Z", "source": "Sample", "headline": "TSLA shares drop on delivery numbers", "tickers": ["TSLA"]}
