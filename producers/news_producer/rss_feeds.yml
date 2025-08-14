@@ -6,3 +6,21 @@ feeds:
     url: https://feeds.a.dj.com/rss/RSSMarketsMain.xml
   - name: Nasdaq
     url: https://www.nasdaq.com/feed/rssoutbound?category=Stocks
+  - name: CNBC
+    url: https://www.cnbc.com/id/100003114/device/rss/rss.html
+  - name: Reuters Business News
+    url: https://www.reutersagency.com/feed/?best-sectors=business-finance
+  - name: Bloomberg
+    url: https://www.bloomberg.com/feed/podcast/etf-report.xml
+  - name: The Wall Street Journal
+    url: https://feeds.a.dj.com/rss/RSSWSJD.xml
+  - name: Financial Times
+    url: https://www.ft.com/?format=rss
+  - name: The Economist
+    url: https://www.economist.com/finance-and-economics/rss.xml
+  - name: Business Insider
+    url: https://www.businessinsider.com/sai/rss
+  - name: Seeking Alpha
+    url: https://seekingalpha.com/market_currents.xml
+  - name: Investopedia
+    url: https://www.investopedia.com/feedbuilder/feed/getfeed/?feedName=

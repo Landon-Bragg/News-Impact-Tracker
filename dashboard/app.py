@@ -23,12 +23,15 @@ st.title("📈 Breaking News Impact Tracker (Live)")
 
 # Sidebar configuration
 mode = st.sidebar.selectbox("Data source", ["Kafka (live)", "Sample CSV (offline)"])
-broker = st.sidebar.text_input("Kafka broker", os.getenv("KAFKA_BROKER", "localhost:9092"))
+broker = st.sidebar.text_input("Kafka broker", os.getenv("KAFKA_BROKER", "localhost:29092"))
 topic = st.sidebar.text_input("Impact topic", os.getenv("KAFKA_TOPIC_IMPACT", "impact_scores"))
 max_batch = st.sidebar.number_input("Max messages per fetch", min_value=10, max_value=5000, value=500, step=10)
 symbols_filter = st.sidebar.text_input("Filter symbols (comma-separated)", os.getenv("SYMBOLS","AAPL,MSFT,GOOGL,AMZN,TSLA,NVDA"))
 time_window_min = st.sidebar.slider("Analysis window (minutes)", min_value=5, max_value=120, value=60, step=5)
 fetch_btn = st.sidebar.button("Fetch latest")
+
+from_beginning = st.sidebar.checkbox("Read from beginning (earliest)", value=True)
+
 
 if "df" not in st.session_state:
     st.session_state["df"] = pd.DataFrame(columns=[
@@ -46,7 +49,7 @@ def parse_rows(rows: List[Dict[str, Any]]) -> pd.DataFrame:
         df = df.dropna(subset=["symbol","event_time","impact_score"])
     return df
 
-def fetch_from_kafka(broker: str, topic: str, max_msgs: int = 1000) -> pd.DataFrame:
+def fetch_from_kafka(broker: str, topic: str, max_msgs: int = 1000, from_beginning: bool = True) -> pd.DataFrame:
     if not KAFKA_AVAILABLE:
         st.warning("kafka-python is not installed in this environment. Install it and rerun.")
         return pd.DataFrame()
@@ -54,17 +57,17 @@ def fetch_from_kafka(broker: str, topic: str, max_msgs: int = 1000) -> pd.DataFr
         consumer = KafkaConsumer(
             topic,
             bootstrap_servers=broker,
-            auto_offset_reset="latest",
+            auto_offset_reset="earliest" if from_beginning else "latest",
             enable_auto_commit=False,
-            consumer_timeout_ms=1000,
+            consumer_timeout_ms=5000,  # give it a moment
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+            group_id="news-impact-dashboard",  # stable group so offset behavior is consistent
         )
     except Exception as e:
         st.error(f"Could not connect to Kafka at {broker}: {e}")
         return pd.DataFrame()
 
-    out = []
-    count = 0
+    out, count = [], 0
     for msg in consumer:
         out.append(msg.value)
         count += 1
@@ -72,6 +75,7 @@ def fetch_from_kafka(broker: str, topic: str, max_msgs: int = 1000) -> pd.DataFr
             break
     consumer.close()
     return parse_rows(out)
+
 
 def load_sample_csv() -> pd.DataFrame:
     here = os.path.dirname(__file__)
@@ -84,7 +88,8 @@ def load_sample_csv() -> pd.DataFrame:
 # Fetch data on demand
 if fetch_btn:
     if mode.startswith("Kafka"):
-        new_df = fetch_from_kafka(broker, topic, int(max_batch))
+        new_df = fetch_from_kafka(broker, topic, int(max_batch), from_beginning)
+
     else:
         new_df = load_sample_csv()
     if not new_df.empty:
@@ -100,7 +105,8 @@ if symbols_filter.strip():
     keep = set(s.strip().upper() for s in symbols_filter.split(",") if s.strip())
     df = df[df["symbol"].isin(keep)]
 
-now_utc = pd.Timestamp.utcnow().tz_localize("UTC") if df["event_time"].dt.tz is None else pd.Timestamp.utcnow()
+now_utc = pd.Timestamp.now(tz=timezone.utc)
+
 cutoff = now_utc - pd.Timedelta(minutes=int(time_window_min))
 dfw = df[df["event_time"] >= cutoff]
 

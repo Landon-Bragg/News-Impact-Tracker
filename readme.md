@@ -1,4 +1,7 @@
+![alt text](image-1.png)
+
 # Breaking News Impact Tracker for Stock Tickers
+
 
 **Stack:** Apache Kafka + Apache Spark (Structured Streaming) + Python (PySpark) + Streamlit + (optional) Postgres
 
