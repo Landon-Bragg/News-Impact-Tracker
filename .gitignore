@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.log
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Spark & Hadoop temp/checkpoint dirs
+spark-warehouse/
+metastore_db/
+.derby/
+spark-checkpoints/
+checkpoint/
+tmp/
+temp/
+C:\spark-tmp/
+
+# Kafka logs
+kafka-logs/
+logs/
+
+# Hadoop specific
+hadoop-data/
+hadoop-tmp/
+
+# Environment files
+.env
+*.env
+
+# Build/dist artifacts
+build/
+dist/
+*.egg-info/
