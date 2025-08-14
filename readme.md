@@ -1,13 +1,11 @@
 ![alt text](image-1.png)
 
-Got it — here’s your README as **one single markdown block** so you can copy it in one go:
-
 ```markdown
-# 📈 News Impact Tracker
+# News Impact Tracker
 
 A real-time pipeline that ingests breaking financial news, calculates sentiment-driven price impacts for selected stocks, and visualizes the results in an interactive dashboard.
 
-## 🚀 Features
+## Features
 - Real-time data ingestion from multiple financial news RSS feeds
 - Live price streaming for selected tickers
 - Sentiment analysis (VADER) on news headlines
@@ -16,33 +14,15 @@ A real-time pipeline that ingests breaking financial news, calculates sentiment-
 - Interactive Streamlit dashboard for live monitoring
 - Configurable tickers, analysis windows, and news sources
 
-## 📂 Project Structure
-```
-
-news-impact-tracker/
-├── producers/
-│   ├── news\_producer/         # Fetches headlines from RSS feeds
-│   ├── price\_producer/        # Streams latest stock prices
-├── dashboard/
-│   ├── app.py                 # Main live dashboard
-│   ├── debug\_dashboard.py     # Testing & connectivity dashboard
-├── simple\_impact\_calculator.py # Calculates sentiment × price change
-├── docker-compose.yml          # Kafka, Spark, Kafka UI services
-├── requirements.txt            # Python dependencies
-└── README.md                   # This file
-
-````
-
-## ⚙️ Prerequisites
+## Prerequisites
 - Docker & Docker Compose
 - Python 3.9+
 - Virtual environment (recommended)
 
-## 🛠️ Setup
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/yourusername/news-impact-tracker.git
+git clone https://github.com/landon-bragg/news-impact-tracker.git
 cd news-impact-tracker
 ````
 
@@ -50,11 +30,6 @@ cd news-impact-tracker
 
 ```powershell
 docker compose up -d
-```
-
-Wait until the Kafka container is healthy:
-
-```powershell
 docker inspect -f "{{.State.Health.Status}}" kafka
 ```
 
@@ -107,7 +82,7 @@ $env:KAFKA_TOPIC_IMPACT="impact_scores"
 python .\simple_impact_calculator.py
 ```
 
-## 📊 Viewing the Dashboard
+## Viewing the Dashboard
 
 Run the live dashboard:
 
@@ -123,18 +98,8 @@ Open your browser at:
 http://localhost:8501
 ```
 
-**Tips:**
 
-* Check "Read from beginning" to load historical impact scores.
-* Adjust Analysis window in the sidebar to filter recent events.
 
-## 🖼️ Architecture
-
-```
- [RSS Feeds] → news_producer ─┐
-                              ├── Kafka → simple_impact_calculator → impact_scores topic → dashboard
- [Price API] → price_producer ─┘
-```
 
 ## 📝 Customization
 
@@ -142,16 +107,3 @@ http://localhost:8501
 * **Change feeds:** Modify the RSS list in `producers/news_producer/app.py`.
 * **Adjust impact formula:** Edit `simple_impact_calculator.py`.
 
-## 📌 Notes
-
-* Requires internet access for RSS feeds and price API.
-* The included `debug_dashboard.py` can be used to verify Kafka connectivity and topic contents before running the main dashboard.
-
-## 📄 License
-
-MIT License © 2025 Your Name
-
-```
-
-Do you want me to also add a **"Quick Start" diagram** screenshot section in this same block so the README looks more visual on GitHub?
-```
